@@ -9,14 +9,20 @@ import (
 )
 
 func main() {
-	port:=os.Getenv("PORT")
-	if port=="" { port="8080" }
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
 
-	http.HandleFunc("/", internal.IndexHandler)
-	http.HandleFunc("/health", internal.HealthHandler)
-	http.HandleFunc("/info", internal.InfoHandler)
-	http.HandleFunc("/time", internal.TimeHandler)
+	mux := http.NewServeMux()
 
+	mux.HandleFunc("/", internal.IndexHandler)
+	mux.HandleFunc("/health", internal.HealthHandler)
+	mux.HandleFunc("/info", internal.InfoHandler)
+	mux.HandleFunc("/time", internal.TimeHandler)
+
+	log.Printf("Starting %s %s", internal.Project, internal.Version)
 	log.Printf("Listening on :%s", port)
-	log.Fatal(http.ListenAndServe(":"+port,nil))
+
+	log.Fatal(http.ListenAndServe(":"+port, internal.LoggingMiddleware(mux)))
 }
