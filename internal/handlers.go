@@ -6,9 +6,30 @@ import (
 	"time"
 )
 
-func writeJSON(w http.ResponseWriter,v any){w.Header().Set("Content-Type","application/json");json.NewEncoder(w).Encode(v)}
+func writeJSON(w http.ResponseWriter, data any) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(data)
+}
 
-func IndexHandler(w http.ResponseWriter,r *http.Request){writeJSON(w,map[string]any{"message":"Hello from Android!","project":"android-go-server-test"})}
-func HealthHandler(w http.ResponseWriter,r *http.Request){writeJSON(w,map[string]string{"status":"ok"})}
-func InfoHandler(w http.ResponseWriter,r *http.Request){writeJSON(w,SystemInfo())}
-func TimeHandler(w http.ResponseWriter,r *http.Request){writeJSON(w,map[string]string{"time":time.Now().Format(time.RFC3339)})}
+func IndexHandler(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, map[string]any{
+		"message": "Hello from Android!",
+		"project": Project,
+	})
+}
+
+func HealthHandler(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, map[string]string{
+		"status": "ok",
+	})
+}
+
+func InfoHandler(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, SystemInfo())
+}
+
+func TimeHandler(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, map[string]string{
+		"time": time.Now().Format(time.RFC3339),
+	})
+}
