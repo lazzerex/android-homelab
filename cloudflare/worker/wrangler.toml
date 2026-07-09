@@ -1,0 +1,12 @@
+name = "blog-router"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+[vars]
+# Stable, safe to commit.
+RENDER_URL = "https://your-render-app.onrender.com"
+
+# PHONE_URL is intentionally NOT set here.
+# It changes every time the Quick Tunnel restarts, so set/update it
+# in the Cloudflare dashboard (Worker > Settings > Variables) instead
+# of redeploying via wrangler each time.
