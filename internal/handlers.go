@@ -3,8 +3,11 @@ package internal
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
+
+	"android-go-server-test/internal/cbridge"
 )
 
 func writeJSON(w http.ResponseWriter, data any) {
@@ -35,9 +38,7 @@ func TimeHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// StreamHandler pushes LiveMetrics over Server-Sent Events once a second
-// until the client disconnects. SSE over plain http.ResponseWriter/Flusher
-// needs no extra dependency, unlike WebSockets.
+// SSE, no lib needed, unlike websockets
 func StreamHandler(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -73,6 +74,20 @@ func StreamHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func ChecksumHandler(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
+		http.Error(w, "failed to read body", http.StatusBadRequest)
+		return
+	}
+
+	writeJSON(w, map[string]any{
+		"checksum": cbridge.FNV1a(body),
+		"backend":  cbridge.Backend,
+		"bytes":    len(body),
+	})
+}
+
 func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(dashboardHTML))
@@ -100,18 +115,26 @@ const dashboardHTML = `<!doctype html>
 <script>
 const grid = document.getElementById("grid");
 const status = document.getElementById("status");
-const order = ["uptime", "load_avg_1m", "mem_used_percent", "mem_available_mb", "mem_total_mb", "go_heap_alloc_mb", "goroutines", "timestamp"];
+const order = ["uptime", "metrics_source", "load_avg_1m", "mem_used_percent", "mem_available_mb", "mem_total_mb", "go_heap_alloc_mb", "goroutines", "timestamp"];
+
+function addCard(key, value) {
+  if (key === "mem_used_percent" && typeof value === "number") value = value.toFixed(1) + "%";
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = '<div class="label">' + key.replace(/_/g, " ") + '</div><div class="value">' + value + '</div>';
+  grid.appendChild(card);
+}
 
 function render(data) {
   grid.innerHTML = "";
   for (const key of order) {
     if (!(key in data)) continue;
-    let value = data[key];
-    if (key === "mem_used_percent") value = value.toFixed(1) + "%";
-    const card = document.createElement("div");
-    card.className = "card";
-    card.innerHTML = '<div class="label">' + key.replace(/_/g, " ") + '</div><div class="value">' + value + '</div>';
-    grid.appendChild(card);
+    addCard(key, data[key]);
+  }
+  if (data.helper && typeof data.helper === "object") {
+    for (const key of Object.keys(data.helper)) {
+      addCard("helper: " + key, data.helper[key]);
+    }
   }
 }
 
