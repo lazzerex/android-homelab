@@ -2,16 +2,17 @@ package internal
 
 import (
 	"bufio"
+	"context"
+	"encoding/json"
 	"os"
+	"os/exec"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
 )
 
-// LiveMetrics reads Linux's /proc for real device stats when available
-// (true on the phone under Termux), and falls back to Go runtime-only
-// stats elsewhere (e.g. running this on Windows during development).
+// reads /proc when present (phone), else Go runtime stats only (e.g. Windows dev)
 func LiveMetrics() map[string]any {
 	m := map[string]any{
 		"timestamp":  time.Now().Format(time.RFC3339),
@@ -22,6 +23,13 @@ func LiveMetrics() map[string]any {
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
 	m["go_heap_alloc_mb"] = ms.Alloc / 1024 / 1024
+
+	if helper, ok := readHelperMetrics(); ok {
+		m["metrics_source"] = "helper"
+		m["helper"] = helper
+		return m
+	}
+	m["metrics_source"] = "go-native"
 
 	if load, ok := readLoadAvg(); ok {
 		m["load_avg_1m"] = load
@@ -34,6 +42,28 @@ func LiveMetrics() map[string]any {
 	}
 
 	return m
+}
+
+func readHelperMetrics() (map[string]any, bool) {
+	bin := os.Getenv("METRICS_HELPER_BIN")
+	if bin == "" {
+		return nil, false
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx, bin).Output()
+	if err != nil {
+		return nil, false
+	}
+
+	var data map[string]any
+	if err := json.Unmarshal(out, &data); err != nil {
+		return nil, false
+	}
+
+	return data, true
 }
 
 func readLoadAvg() (float64, bool) {
