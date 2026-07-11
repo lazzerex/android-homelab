@@ -20,6 +20,8 @@ func main() {
 	mux.HandleFunc("/health", internal.HealthHandler)
 	mux.HandleFunc("/info", internal.InfoHandler)
 	mux.HandleFunc("/time", internal.TimeHandler)
+	mux.HandleFunc("/stream", internal.StreamHandler)
+	mux.HandleFunc("/dashboard", internal.DashboardHandler)
 
 	log.Printf("Starting %s %s", internal.Project, internal.Version)
 	log.Printf("Listening on :%s", port)
