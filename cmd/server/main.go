@@ -14,6 +14,10 @@ func main() {
 		port = "8080"
 	}
 
+	if err := internal.InitGuestbook(); err != nil {
+		log.Fatalf("guestbook init failed: %v", err)
+	}
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", internal.IndexHandler)
@@ -23,9 +27,16 @@ func main() {
 	mux.HandleFunc("/stream", internal.StreamHandler)
 	mux.HandleFunc("/dashboard", internal.DashboardHandler)
 	mux.HandleFunc("/checksum", internal.ChecksumHandler)
+	mux.HandleFunc("GET /guestbook", internal.GuestbookListHandler)
+	mux.HandleFunc("POST /guestbook", internal.GuestbookAddHandler)
+	mux.HandleFunc("POST /pastebin", internal.PastebinCreateHandler)
+	mux.HandleFunc("GET /pastebin/{id}", internal.PastebinGetHandler)
+
+	limiter := internal.NewRateLimiter(5, 10) // 5 req/s per IP, burst 10
 
 	log.Printf("Starting %s %s", internal.Project, internal.Version)
 	log.Printf("Listening on :%s", port)
 
-	log.Fatal(http.ListenAndServe(":"+port, internal.LoggingMiddleware(mux)))
+	handler := internal.LoggingMiddleware(limiter.Middleware(mux))
+	log.Fatal(http.ListenAndServe(":"+port, handler))
 }
