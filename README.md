@@ -176,6 +176,67 @@ The endpoints below belong to this repo's own toy service (`cmd/server`), used f
 | /time | Current server time |
 | /stream | Server-Sent Events: live stats (load avg, memory, goroutines) once a second |
 | /dashboard | Browser page that renders /stream live |
+| /checksum | POST a body, get its FNV-1a checksum back. Computed via C through cgo when built natively with clang, pure Go otherwise - response's `backend` field says which |
+
+## Experiments
+
+Polyglot learning exercises living alongside the main Go server. All optional - the normal build/deploy flow above doesn't touch or need any of this.
+
+- `experiments/c-http-server/` - HTTP server from raw POSIX sockets, no libraries. Shows what `net/http` hides: the accept loop, manual request parsing, hand-written response framing.
+- `experiments/rust-metrics/` - standalone binary that reads `/proc/loadavg` and `/proc/meminfo`, prints one line of JSON, exits.
+- `internal/cbridge/` - FNV-1a checksum, implemented twice: once via cgo calling real C (`bridge_cgo.go`, needs `CGO_ENABLED=1` + a C compiler), once in pure Go (`bridge_fallback.go`, what the normal Windows cross-compile build uses, no setup needed). Backs the `/checksum` endpoint.
+
+### Running them
+
+Everything below runs **on the phone, in Termux** - native compilers, no cross-toolchain setup.
+
+**Get the source onto the phone**, one of:
+
+```bash
+pkg install git
+git clone <your-repo-url>
+```
+
+or, if you'd rather transfer files the same way you move built binaries (Downloads folder):
+
+```bash
+termux-setup-storage        # one-time, grants Termux access to shared storage
+mv ~/storage/downloads/android-homelab ~/android-homelab   # after copying the folder into Downloads
+```
+
+**1. C raw-socket server**
+
+```bash
+pkg install clang
+cd android-homelab/experiments/c-http-server
+clang -O2 -o c-http-server server.c
+./c-http-server &            # listens on :8081, separate from the Go server's :8080
+curl http://localhost:8081/health
+```
+
+**2. cgo bridge** (`/checksum`'s `backend` field flips `go` → `cgo`)
+
+```bash
+cd android-homelab
+export CGO_ENABLED=1
+export GOOS=linux GOARCH=arm64
+go build -o server-cgo ./cmd/server
+./server-cgo &
+curl -X POST -d "hello" http://localhost:8080/checksum
+```
+
+**3. Rust subprocess helper** (`/stream`'s `metrics_source` flips `go-native` → `helper`)
+
+```bash
+pkg install rust
+cd android-homelab/experiments/rust-metrics
+cargo build --release
+export METRICS_HELPER_BIN=$(pwd)/target/release/rust-metrics
+cd ../..
+./server &            # or ./server-cgo
+```
+
+Then open `http://PHONE_IP:8080/dashboard` from the laptop - cards now include `helper: load_avg_1m`, `helper: mem_total_mb`, etc.
 
 ```json
 {
