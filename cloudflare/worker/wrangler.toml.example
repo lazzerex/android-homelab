@@ -1,0 +1,15 @@
+name = "blog-router"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+[vars]
+RENDER_URL = "https://your-render-app.onrender.com"
+
+# PHONE_URL is intentionally NOT set here.
+# It changes every time the Quick Tunnel restarts. Run
+# scripts/run-tunnel-auto.ps1 (or .sh) instead of setting it by hand -
+# it writes PHONE_URL into your local wrangler.toml and redeploys for you.
+
+# Copy this file to wrangler.toml, fill in your real RENDER_URL, and
+# deploy from there. wrangler.toml is gitignored so your real URL never
+# gets committed.
