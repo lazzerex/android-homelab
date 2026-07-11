@@ -2,6 +2,7 @@ package internal
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 )
@@ -33,3 +34,91 @@ func TimeHandler(w http.ResponseWriter, r *http.Request) {
 		"time": time.Now().Format(time.RFC3339),
 	})
 }
+
+// StreamHandler pushes LiveMetrics over Server-Sent Events once a second
+// until the client disconnects. SSE over plain http.ResponseWriter/Flusher
+// needs no extra dependency, unlike WebSockets.
+func StreamHandler(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	send := func() {
+		data, err := json.Marshal(LiveMetrics())
+		if err != nil {
+			return
+		}
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
+
+	send()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+			send()
+		}
+	}
+}
+
+func DashboardHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write([]byte(dashboardHTML))
+}
+
+const dashboardHTML = `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>android-homelab: live stats</title>
+<style>
+  body { background: #0b0f14; color: #d6e2ea; font-family: ui-monospace, monospace; padding: 2rem; }
+  h1 { font-size: 1rem; color: #7fd08a; margin-bottom: 1.5rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; max-width: 900px; }
+  .card { background: #131a22; border: 1px solid #223; border-radius: 8px; padding: 1rem; }
+  .label { font-size: 0.75rem; color: #7a8a99; text-transform: uppercase; letter-spacing: 0.05em; }
+  .value { font-size: 1.6rem; margin-top: 0.35rem; color: #e8f0f5; }
+  #status { font-size: 0.8rem; color: #7a8a99; margin-bottom: 1rem; }
+</style>
+</head>
+<body>
+<h1>android-homelab // live stats</h1>
+<div id="status">connecting...</div>
+<div class="grid" id="grid"></div>
+<script>
+const grid = document.getElementById("grid");
+const status = document.getElementById("status");
+const order = ["uptime", "load_avg_1m", "mem_used_percent", "mem_available_mb", "mem_total_mb", "go_heap_alloc_mb", "goroutines", "timestamp"];
+
+function render(data) {
+  grid.innerHTML = "";
+  for (const key of order) {
+    if (!(key in data)) continue;
+    let value = data[key];
+    if (key === "mem_used_percent") value = value.toFixed(1) + "%";
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = '<div class="label">' + key.replace(/_/g, " ") + '</div><div class="value">' + value + '</div>';
+    grid.appendChild(card);
+  }
+}
+
+const source = new EventSource("/stream");
+source.onopen = () => { status.textContent = "connected"; };
+source.onerror = () => { status.textContent = "disconnected, retrying..."; };
+source.onmessage = (event) => render(JSON.parse(event.data));
+</script>
+</body>
+</html>`
