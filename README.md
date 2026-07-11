@@ -30,7 +30,7 @@ Phone (Termux) running the blog's cmd/server binary
 
 The blog frontend only ever talks to the Worker. It never knows Render or the phone exist directly, the Worker decides per request.
 
-Setup details and manual steps: `cloudflare/worker/wrangler.toml.example`, `scripts/run-tunnel.ps1` / `run-tunnel.sh`.
+Setup details and manual steps: `cloudflare/worker/wrangler.toml.example`, `scripts/run-tunnel-auto.ps1` / `run-tunnel-auto.sh` (recommended — also updates the Worker), or `scripts/run-tunnel.ps1` / `run-tunnel.sh` (tunnel only, manual Worker update).
 
 ## Full Setup Guide
 
@@ -87,25 +87,7 @@ Then from the laptop, confirm LAN access using the phone's LAN IP (find it in Te
 curl http://PHONE_IP:8080/health
 ```
 
-### 5. Expose the phone to the internet
-
-`cloudflared` does not run on old Android (see Difficulties below), so this runs on the laptop instead, proxying to the phone over LAN.
-
-Install `cloudflared` on the laptop:
-
-```powershell
-winget install --id Cloudflare.cloudflared
-```
-
-Run the tunnel, pointed at the phone's LAN IP:
-
-```powershell
-.\scripts\run-tunnel.ps1 <phone-lan-ip>
-```
-
-This prints a random `https://*.trycloudflare.com` URL. Copy it, you'll need it in step 7. It changes every time you restart the tunnel.
-
-### 6. Deploy the Cloudflare Worker
+### 5. Deploy the Cloudflare Worker
 
 The Worker is what the public actually talks to. It health-checks the phone on every request and falls back to a second backend if the phone doesn't respond.
 
@@ -116,7 +98,7 @@ cd cloudflare/worker
 cp wrangler.toml.example wrangler.toml
 ```
 
-Edit `wrangler.toml`, set `RENDER_URL` (or whatever your fallback backend's URL is) to a real value. Then:
+Edit `wrangler.toml`, set `RENDER_URL` (or whatever your fallback backend's URL is) to a real value. Leave `PHONE_URL` unset for now, step 6 fills it in. Then:
 
 ```bash
 wrangler deploy
@@ -124,17 +106,35 @@ wrangler deploy
 
 This gives you a stable URL like `https://blog-router.<your-subdomain>.workers.dev`.
 
-### 7. Set the phone's URL
+### 6. Expose the phone to the internet
 
-Cloudflare dashboard, Workers & Pages, your worker, Settings, Variables, add `PHONE_URL` = the `trycloudflare.com` URL from step 5. Save.
+`cloudflared` does not run on old Android (see Difficulties below), so this runs on the laptop instead, proxying to the phone over LAN.
 
-Every time the tunnel restarts (laptop reboot, phone reboot, crash), it gets a new URL, come back here and update it.
+Install `cloudflared` on the laptop:
 
-### 8. Point your frontend at the Worker
+```powershell
+winget install --id Cloudflare.cloudflared
+```
 
-Wherever your frontend's backend URL is configured (env var, config file), set it to the Worker URL from step 6, not the phone or the fallback backend directly. Redeploy the frontend.
+Run the tunnel with the auto-update script, pointed at the phone's LAN IP:
 
-### 9. Test it
+```powershell
+.\scripts\run-tunnel-auto.ps1 <phone-lan-ip>
+```
+
+```bash
+./scripts/run-tunnel-auto.sh <phone-lan-ip>
+```
+
+This starts the tunnel, scrapes the random `https://*.trycloudflare.com` URL from its own logs, writes it into `wrangler.toml` as `PHONE_URL`, and runs `wrangler deploy` for you. No dashboard step needed. It changes every time you restart the tunnel — just rerun the script, no manual URL copying.
+
+(`scripts/run-tunnel.ps1` / `run-tunnel.sh` still exist if you want the tunnel without the auto-update, e.g. for debugging — then you'd set `PHONE_URL` by hand in the Cloudflare dashboard, Workers & Pages → your worker → Settings → Variables.)
+
+### 7. Point your frontend at the Worker
+
+Wherever your frontend's backend URL is configured (env var, config file), set it to the Worker URL from step 5, not the phone or the fallback backend directly. Redeploy the frontend.
+
+### 8. Test it
 
 ```bash
 curl https://blog-router.<your-subdomain>.workers.dev/health
@@ -148,7 +148,7 @@ Should hit the phone (check Termux logs to confirm). Then kill the phone server 
 
 **`cloudflared` doesn't run on Android 5.1.** The binary has runtime requirements the OS doesn't meet. Workaround: run the Cloudflare Tunnel on the laptop instead of the phone, pointed at the phone's LAN IP (`cloudflared tunnel --url http://PHONE_IP:8080`). The phone still does all the actual serving, the laptop is just a relay. Tradeoff: the phone is only reachable publicly while the laptop is also on and on the same LAN. Acceptable since the Render fallback covers the gap regardless.
 
-**Quick Tunnel URLs are not stable.** Using Cloudflare's free Quick Tunnel (no domain/account required) means a new random `*.trycloudflare.com` URL every time the tunnel restarts (laptop reboot, phone reboot, crash). There's no code fix for this yet, the Worker's `PHONE_URL` variable has to be updated by hand in the Cloudflare dashboard after each restart.
+**Quick Tunnel URLs are not stable.** Using Cloudflare's free Quick Tunnel (no domain/account required) means a new random `*.trycloudflare.com` URL every time the tunnel restarts (laptop reboot, phone reboot, crash). `scripts/run-tunnel-auto.ps1` / `.sh` scrapes the new URL from the tunnel's own log output and redeploys the Worker automatically, so this no longer needs a manual dashboard edit. A named tunnel with a fixed hostname would remove the redeploy-on-restart step entirely, but that needs a domain added to the Cloudflare account, which this project doesn't have yet.
 
 ## Build
 
@@ -174,6 +174,8 @@ The endpoints below belong to this repo's own toy service (`cmd/server`), used f
 | /health | Health check |
 | /info | Build & runtime information |
 | /time | Current server time |
+| /stream | Server-Sent Events: live stats (load avg, memory, goroutines) once a second |
+| /dashboard | Browser page that renders /stream live |
 
 ```json
 {
