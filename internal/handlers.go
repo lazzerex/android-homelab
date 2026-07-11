@@ -23,6 +23,7 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func HealthHandler(w http.ResponseWriter, r *http.Request) {
+	Notify("android-homelab", "Health check hit")
 	writeJSON(w, map[string]string{
 		"status": "ok",
 	})
@@ -86,6 +87,33 @@ func ChecksumHandler(w http.ResponseWriter, r *http.Request) {
 		"backend":  cbridge.Backend,
 		"bytes":    len(body),
 	})
+}
+
+func GuestbookListHandler(w http.ResponseWriter, r *http.Request) {
+	entries, err := ListGuestbookEntries()
+	if err != nil {
+		http.Error(w, "failed to read guestbook", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, entries)
+}
+
+func GuestbookAddHandler(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name    string `json:"name"`
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" || body.Message == "" {
+		http.Error(w, "name and message required", http.StatusBadRequest)
+		return
+	}
+
+	entry, err := AddGuestbookEntry(body.Name, body.Message)
+	if err != nil {
+		http.Error(w, "failed to save entry", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, entry)
 }
 
 func DashboardHandler(w http.ResponseWriter, r *http.Request) {
