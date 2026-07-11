@@ -22,6 +22,7 @@ func main() {
 	mux.HandleFunc("/time", internal.TimeHandler)
 	mux.HandleFunc("/stream", internal.StreamHandler)
 	mux.HandleFunc("/dashboard", internal.DashboardHandler)
+	mux.HandleFunc("/checksum", internal.ChecksumHandler)
 
 	log.Printf("Starting %s %s", internal.Project, internal.Version)
 	log.Printf("Listening on :%s", port)
