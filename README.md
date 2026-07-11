@@ -171,12 +171,20 @@ The endpoints below belong to this repo's own toy service (`cmd/server`), used f
 | Endpoint | Description |
 |----------|-------------|
 | / | Welcome message |
-| /health | Health check |
+| /health | Health check. Also fires a Termux notification + vibrate if `termux-api` is installed (no-op otherwise) |
 | /info | Build & runtime information |
 | /time | Current server time |
 | /stream | Server-Sent Events: live stats (load avg, memory, goroutines) once a second |
 | /dashboard | Browser page that renders /stream live |
 | /checksum | POST a body, get its FNV-1a checksum back. Computed via C through cgo when built natively with clang, pure Go otherwise - response's `backend` field says which |
+| GET /guestbook | List guestbook entries, persisted in a local SQLite file (`GUESTBOOK_DB_PATH`, default `guestbook.db`) |
+| POST /guestbook | Add an entry - JSON body `{"name": "...", "message": "..."}` |
+| POST /pastebin | Create a paste from the request body, returns an id + url |
+| GET /pastebin/{id} | Fetch a paste by id (in-memory, lost on restart - unlike the guestbook) |
+
+All routes are rate-limited per client IP (5 req/s, burst 10) - hit it faster and you'll get `429 Too Many Requests`.
+
+For the notification on `/health`: install the [Termux:API](https://f-droid.org/en/packages/com.termux.api/) app plus `pkg install termux-api` in Termux. Without it, `/health` just skips the notification silently.
 
 ## Experiments
 
